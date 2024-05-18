@@ -4,13 +4,18 @@ from sklearn.metrics import classification_report
 from seqeval.metrics import f1_score as seqeval_f1_score
 from sklearn.metrics import f1_score as sklearn_f1_score
 from itertools import chain
+import numpy as np
+import pandas as pd
+import matplotlib.pyplot as plt
 
 
-
-
-def train_loop(args , data, optimizer, criterion_slots, criterion_intents, model, total_slot_labels , total_intent_labels ):
+def train_loop(args , data, optimizer, criterion_slots, criterion_intents, model, total_slot_labels , total_intent_labels , metrics ):
     model.train()
+
     loss_array = []
+    loss_slots_array= []
+    loss_intent_array = []
+    
     for sample in data:
 
         optimizer.zero_grad() 
@@ -42,18 +47,22 @@ def train_loop(args , data, optimizer, criterion_slots, criterion_intents, model
         loss =  loss_intent + slot_loss # In joint training we sum the losses. 
                                        # Is there another way to do that?
 
-
+        loss_slots_array.append(slot_loss.item())
+        loss_intent_array.append(loss_intent.item())
         loss_array.append(loss.item())
+
         loss.backward() 
         torch.nn.utils.clip_grad_norm_(model.parameters(), args.clip)  
         optimizer.step() 
 
+    metrics["loss_slots"]  = np.asarray(loss_slots_array).mean()
+    metrics["intent_loss"]  = np.asarray(loss_intent_array).mean()
+    metrics["complesive_loss"] = np.asarray(loss_array).mean()
 
-    return loss_array
 
 
 
-def eval_loop(args , data , criterion_slots, criterion_intents, model, total_slot_labels , total_intent_labels, ignore_index):
+def eval_loop(args , data , criterion_slots, criterion_intents, model, total_slot_labels , total_intent_labels, ignore_index , metrics = None):
         
         model.eval()
         loss_array = []
@@ -140,6 +149,58 @@ def eval_loop(args , data , criterion_slots, criterion_intents, model, total_slo
                 intent_acc = torch.tensor(intent_acc)
                 acc.append(intent_acc.item())
 
-        
+        if metrics is not None:
+            metrics["Intent_accuracy"] = np.asarray(acc).mean()
+            metrics["F1_scores"] = np.asarray(F1_score).mean()
+            metrics["Total_loss_eval"] = np.asarray(loss_array).mean() 
 
         return   acc , F1_score
+
+
+
+def plot_metrics(metric_list, filename='metrics_plot.png', training=True):
+    # Transforming the dictionary into a DataFrame
+
+    df = pd.DataFrame.from_dict(metric_list, orient='index')
+
+    if training:
+        
+        # Plotting training metrics
+        fig, axs = plt.subplots(3, 1, figsize=(10, 15))
+
+        df['loss_slots'].plot(ax=axs[0], marker='o', linestyle='-', color='b', title='Loss Slots vs Epochs')
+        axs[0].set_xlabel('Epochs')
+        axs[0].set_ylabel('Loss Slots')
+
+        df['intent_loss'].plot(ax=axs[1], marker='o', linestyle='-', color='r', title='Intent Loss vs Epochs')
+        axs[1].set_xlabel('Epochs')
+        axs[1].set_ylabel('Intent Loss')
+
+        df['complesive_loss'].plot(ax=axs[2], marker='o', linestyle='-', color='g', title='Complesive Loss vs Epochs')
+        axs[2].set_xlabel('Epochs')
+        axs[2].set_ylabel('Complesive Loss')
+
+        plt.tight_layout()
+        plt.savefig(filename)
+        plt.show()
+    else:
+    
+        # Plotting evaluation metrics
+        fig, axs = plt.subplots(3, 1, figsize=(10, 15))
+
+
+        df['Intent_accuracy'].plot(ax=axs[0], marker='o', linestyle='-', color='b', title='Intente accuracy vs Epochs')
+        axs[0].set_xlabel('Epochs')
+        axs[0].set_ylabel('Intent accuracy')
+
+        df['F1_scores'].plot(ax=axs[1], marker='o', linestyle='-', color='r', title='F1  vs Epochs')
+        axs[1].set_xlabel('Epochs')
+        axs[1].set_ylabel('F1 ')
+
+        df['Total_loss_eval'].plot(ax=axs[2], marker='o', linestyle='-', color='g', title='Complesive Loss vs Epochs')
+        axs[2].set_xlabel('Epochs')
+        axs[2].set_ylabel('Complesive Loss')
+
+        plt.tight_layout()
+        plt.savefig(filename)
+        plt.show()

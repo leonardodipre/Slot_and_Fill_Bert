@@ -13,6 +13,7 @@ from model import *
 from functions import *
 from utils import *
 
+
 def main(args):
 
     PAD_TOKEN  = torch.nn.CrossEntropyLoss().ignore_index
@@ -55,6 +56,8 @@ def main(args):
     criterion_slots = nn.CrossEntropyLoss(ignore_index=PAD_TOKEN)
     criterion_intents = nn.CrossEntropyLoss() # Because we do not have the pad token
 
+    #define the metrics
+    metric_list = {}
     
     patience = 5
     losses_train = []
@@ -63,28 +66,32 @@ def main(args):
     best_f1 = 0
 
     for x in tqdm(range(1, args.N_epochs)):
-
-        loss = train_loop(args , train_dataloader, optimizer, criterion_slots, 
-                        criterion_intents, model, total_slot_labels , total_intent_labels)
-      
-        print("Loss mean" , np.asarray(loss).mean())
-
         
-        if x % 5 == 0: # We check the performance every 5 epochs
-            sampled_epochs.append(x)
-            losses_train.append(np.asarray(loss).mean())
+        #define dictionary of metrcis
+        metric_list[x] = {}
+
+        train_loop(args , train_dataloader, optimizer, criterion_slots, 
+                        criterion_intents, model, total_slot_labels , total_intent_labels, metric_list[x])
+        
+
             
-            print(losses_train)
+           
             
-            acc_intet , F1_score = eval_loop(args , dev_dataloader , criterion_slots, criterion_intents, model, total_slot_labels , total_intent_labels , ignore_index=PAD_TOKEN)
-            print("intent acc" , np.asarray(acc_intet).mean() ,"F1_score Slots" , np.asarray(F1_score).mean())
+        acc_intet , F1_score = eval_loop(args , dev_dataloader , criterion_slots, criterion_intents, model, total_slot_labels , total_intent_labels , ignore_index=PAD_TOKEN , metrics = metric_list[x])
+        #print("intent acc" , np.asarray(acc_intet).mean() ,"F1_score Slots" , np.asarray(F1_score).mean())
 
     #Vediamo sul Test set   
-    acc_intet_test , F1_score_test = eval_loop(args , test_dataloader , criterion_slots, criterion_intents, model, total_slot_labels , total_intent_labels , ignore_index=PAD_TOKEN)
+    acc_intet_test , F1_score_test = eval_loop(args , test_dataloader , criterion_slots, criterion_intents, model, total_slot_labels , total_intent_labels , ignore_index=PAD_TOKEN , metrics = None)
     print("intent acc" , np.asarray(acc_intet_test).mean() , "F1_score Slots" , np.asarray(F1_score_test).mean())
 
     save_results_to_csv(args ,  np.asarray(F1_score_test).mean() , np.asarray(acc_intet_test).mean() , losses_train , 0)
 
+    plot_metrics(metric_list, filename='training_metrics_plot.png', training=True)
+
+    plot_metrics(metric_list, filename='Eval_train_metrics_plot.png', training=False)
+
+    
+    
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser()
